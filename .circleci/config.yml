@@ -24,24 +24,6 @@ aliases:
       paths:
         - node_modules
       key: app-{{ checksum "package.json" }}
-  - &install-aws-cli
-    run:
-      name: Installing AWS CLI
-      working_directory: /
-      command: |
-        sudo apt-get -y -qq update
-        sudo apt-get install -y awscli
-        sudo apt-get install -y python-pip python-dev build-essential
-  - &build-project
-    run:
-      name: Build Project
-      command: |
-        yarn install
-        yarn build
-        cd build
-        zip ../build.zip -r * .[^.]*
-        echo "Build successful"
-
 
 jobs:
   build:
@@ -53,63 +35,31 @@ jobs:
       - *install-dependencies
       - *save-cache
 
-  deploy-to-aws-s3:
+  deploy-to-heroku:
     executor: app-executor
     steps:
       - checkout
       - *show-current-branch-name
-      - *install-aws-cli
-      - *build-project
       - run:
-          name: Deploy to AWS S3
+          name: Deploy to Heroku
           command: |
             if [ "${CIRCLE_BRANCH}" == "main" ]
             then
-              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_PRODUCTION} --delete
+              git push https://heroku:${HEROKU_API_KEY}@git.heroku.com/{HEROKU_APP_PRODUCTION}.git ${CIRCLE_BRANCH}:master -f
             elif [ "${CIRCLE_BRANCH}" == "staging" ]
             then
-              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_STAGING} --delete
+              git push https://heroku:${HEROKU_API_KEY}@git.heroku.com/{HEROKU_APP_STAGING}.git ${CIRCLE_BRANCH}:master -f
             else
-              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_DEVELOP} --delete
-            fi
-
-  deploy-to-aws-cloudfront:
-    executor: app-executor
-    steps:
-      - checkout
-      - *show-current-branch-name
-      - *install-aws-cli
-      - *build-project
-      - run:
-          name: Deploy to AWS Cloudfront
-          command: |
-            aws configure set preview.cloudfront true
-            if [ "${CIRCLE_BRANCH}" == "main" ]
-            then
-              aws cloudfront create-invalidation --distribution-id ${AWS_CLOUDFRONT_PRODUCTION_ID} --paths /\*
-            elif [ "${CIRCLE_BRANCH}" == "staging" ]
-            then
-              aws cloudfront create-invalidation --distribution-id ${AWS_CLOUDFRONT_STAGING_ID} --paths /\*
-            else
-              aws cloudfront create-invalidation --distribution-id ${AWS_CLOUDFRONT_DEVELOP_ID} --paths /\*
+              git push https://heroku:${HEROKU_API_KEY}@git.heroku.com/{HEROKU_APP_DEVEROPMENT}.git ${CIRCLE_BRANCH}:master -f
             fi
 
 workflows:
   build_and_deploy:
     jobs:
       - build
-      - deploy-to-aws-s3:
+      - deploy-to-heroku:
           requires:
             - build
-          filters:
-            branches:
-              only:
-                - develop
-                - staging
-                - main
-      - deploy-to-aws-cloudfront:
-          requires:
-            - deploy-to-aws-s3
           filters:
             branches:
               only:
